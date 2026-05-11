@@ -36,8 +36,8 @@ TOL_PORTERIA_X = 25
 # ==========================
 # TIEMPOS
 # ==========================
-CAPTURAR_TIMEOUT = 5.0
-TIEMPO_EMPUJE = 1.2
+CAPTURAR_TIMEOUT = 1.0
+TIEMPO_EMPUJE = 0.5
 TIEMPO_PULSO_PATEO_INICIO = 0.1
 TIEMPO_PULSO_PATEO_FIN = 0.6
 TIEMPO_POST_PATEO = 2.0
@@ -101,12 +101,37 @@ def main():
                     estado_prev = estado
 
                 cilindro_on = 0
+                cilindro = cilindro_on
+                patada = 0
 
+                # PRIORIDAD 1: si aparece la pelota, romper rutina de porteria
                 if found:
+                    print("Pelota encontrada -> ALINEAR")
+                    Ux = 0
+                    Uy = 0
+                    Ut = 0
                     estado = Estado.ALINEAR
+
                 else:
-                    #Ux = 0.5
-                    pass
+                    # PRIORIDAD 2: si NO veo pelota, usar porteria como referencia
+
+                    # Si no veo porteria, se mueve para atras
+                    if error_x_goal is None:
+                        Ux = -0.22
+                        Uy = 0
+                        Ut = 0
+
+                    # Si veo porteria pero no estoy alineado
+                    elif abs(error_x_goal) > TOL_PORTERIA_X:
+                        Ux = 0
+                        Uy = -0.004 * error_x_goal
+                        Ut = 0
+
+                    # Si ya estoy alineado con porteria, me mantengo alejado
+                    else:
+                        Ux = -0.18
+                        Uy = -0.001 * error_x_goal
+                        Ut = 0
             # ==========================
             # ALINEAR PELOTA
             # ==========================
@@ -121,7 +146,7 @@ def main():
                     estado = Estado.BUSQUEDA
                     continue
 
-                Uy = -0.006 * error_x
+                Uy = -0.004 * error_x
 
                 if abs(error_x) <= TOL_X:
                     estado = Estado.AVANZAR
@@ -141,6 +166,7 @@ def main():
                     continue
                 
                 Ux = 0.35
+                Uy = -0.005 * error_x
 
                 if abs(error_y) <= TOL_Y:
                     estado = Estado.CAPTURAR
@@ -203,19 +229,19 @@ def main():
                 if error_x_goal is None:
                     Ux = -0.25
                     Uy = 0
-                    Ut = 0.26
+                    Ut = 0
 
                 # 2. Si ve porteria pero no esta alineada
                 elif abs(error_x_goal) > TOL_PORTERIA_X:
-                    Ux = -0.25
-                    Uy = 0
-                    Ut = -0.005 * error_x_goal
+                    Ux = 0.25
+                    Uy = -0.005 * error_x_goal
+                    Ut = 0
 
                 # 3. Si esta casi alineada, avanza manteniendo correccion pequena
                 else:
-                    Ux = -0.25
-                    Uy = 0
-                    Ut = -0.001 * error_x_goal
+                    Ux = 0.25
+                    Uy = -0.001 * error_x_goal
+                    Ut = 0
 
                 # 4. Disparar solo si ve porteria y esta alineado
                 if error_x_goal is not None and abs(error_x_goal) < TOL_PORTERIA_X:

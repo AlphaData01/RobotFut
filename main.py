@@ -13,7 +13,7 @@ from Vision import BallTracker
 # ==========================
 # CAMARA
 # ==========================
-tracker = BallTracker(cam_index=1, width=640, height=480, show_windows=True)
+tracker = BallTracker(cam_index=0, width=640, height=480, show_windows=True)
 
 # ==========================
 # ESTADOS
@@ -45,6 +45,13 @@ TIEMPO_POST_PATEO = 2.0
 # Frecuencia de envio serial
 SEND_DT = 0.03  # 33 Hz
 
+# ==========================
+# BUSQUEDA LATERAL
+# ==========================
+TIEMPO_LATERAL_BUSQUEDA = 2.0
+TIEMPO_RECENTRAR_BUSQUEDA = 1.0
+VEL_LATERAL_BUSQUEDA = 0.25
+
 
 def main():
     estado = Estado.BUSQUEDA
@@ -57,6 +64,11 @@ def main():
 
     cilindro_on = 0
     last_send = 0.0
+
+    # BUSQUEDA LATERAL
+    t_busqueda_lateral = None
+    direccion_lateral = 1
+    modo_busqueda_lateral = False
 
     # Conectar con Arduino
     # Ubuntu: /dev/ttyACM0, /dev/ttyUSB0, etc.
@@ -99,39 +111,64 @@ def main():
                 if estado != estado_prev:
                     print("ESTADO:", estado.name)
                     estado_prev = estado
+                    t_busqueda_lateral = None
+                    modo_busqueda_lateral = False
 
                 cilindro_on = 0
                 cilindro = cilindro_on
                 patada = 0
 
-                # PRIORIDAD 1: si aparece la pelota, romper rutina de porteria
+                # Si ve pelota, rompe cualquier rutina y va por ella
                 if found:
                     print("Pelota encontrada -> ALINEAR")
                     Ux = 0
                     Uy = 0
                     Ut = 0
+                    t_busqueda_lateral = None
+                    modo_busqueda_lateral = False
                     estado = Estado.ALINEAR
 
                 else:
-                    # PRIORIDAD 2: si NO veo pelota, usar porteria como referencia
-
-                    # Si no veo porteria, se mueve para atras
+                    # Si no ve porteria, se mueve hacia atras
                     if error_x_goal is None:
                         Ux = -0.22
                         Uy = 0
                         Ut = 0
+                        t_busqueda_lateral = None
+                        modo_busqueda_lateral = False
 
-                    # Si veo porteria pero no estoy alineado
+                    # Si ve porteria pero no esta alineado, centra porteria
                     elif abs(error_x_goal) > TOL_PORTERIA_X:
-                        Ux = 0
+                        Ux = -0.018
                         Uy = -0.004 * error_x_goal
                         Ut = 0
+                        t_busqueda_lateral = None
+                        modo_busqueda_lateral = False
 
-                    # Si ya estoy alineado con porteria, me mantengo alejado
+                    # Si ya esta alineado con porteria, inicia rutina lateral
                     else:
-                        Ux = -0.18
-                        Uy = -0.001 * error_x_goal
-                        Ut = 0
+                        if not modo_busqueda_lateral:
+                            modo_busqueda_lateral = True
+                            t_busqueda_lateral = time.time()
+                            direccion_lateral *= -1
+                            print("Porteria centrada -> busqueda lateral")
+
+                        tiempo_lateral = time.time() - t_busqueda_lateral
+
+                        # Mover lateralmente unos segundos
+                        if tiempo_lateral < TIEMPO_LATERAL_BUSQUEDA:
+                            Ux = 0
+                            Uy = direccion_lateral * VEL_LATERAL_BUSQUEDA
+                            Ut = 0
+
+                        # Termino lateral, vuelve a recentrar porteria
+                        else:
+                            Ux = 0
+                            Uy = 0
+                            Ut = 0
+                            modo_busqueda_lateral = False
+                            t_busqueda_lateral = None
+                            print("Termino lateral -> recentrar porteria")
             # ==========================
             # ALINEAR PELOTA
             # ==========================

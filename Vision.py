@@ -17,7 +17,7 @@ import time
 # =========================================================
 # CONFIG GENERAL
 # =========================================================
-SHOW_STANDALONE = False       # False para usarlo importado desde main.py
+SHOW_STANDALONE = True       # False para usarlo importado desde main.py
 STANDALONE_CAM_INDEX = 0      # Cambia a 0 si tu camara es la default
 STANDALONE_WIDTH = 640
 STANDALONE_HEIGHT = 480

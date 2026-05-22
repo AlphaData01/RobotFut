@@ -1,14 +1,14 @@
-# Vision_mejorado.py
-# RobotFutbol CUCEI - Vision robusta para pelota naranja + porteria azul/amarilla
-# Mejoras:
-# - HSV adaptativo por brillo
-# - deteccion tolerante a pelota no circular
-# - ROI dinamico
-# - memoria de ultima posicion
-# - ayuda por movimiento
-# - filtro Kalman para prediccion
-# - confianza de tracking
-# - modo standalone para probar solo Vision.py sin main.py
+# RobotFutbol CUCEI
+""""
+Mejoras:
+- HSV adaptativo por brillo
+- deteccion tolerante a pelota no circular
+- ROI dinamico
+- memoria de ultima posicion
+- ayuda por movimiento
+- filtro Kalman para prediccion
+- confianza tracking
+"""
 
 import cv2
 import numpy as np
@@ -16,20 +16,19 @@ import time
 
 # =========================================================
 # CONFIG GENERAL
-# =========================================================
-SHOW_STANDALONE = True       # False para usarlo importado desde main.py
-STANDALONE_CAM_INDEX = 0      # Cambia a 0 si tu camara es la default
+SHOW_STANDALONE = True       
+STANDALONE_CAM_INDEX = 0      
 STANDALONE_WIDTH = 640
 STANDALONE_HEIGHT = 480
 
 # =========================================================
 # CONFIG HSV
-# =========================================================
+
 # Pelota naranja modo normal
 NARANJA_BAJO_NORMAL = np.array([5, 120, 120])
 NARANJA_ALTO_NORMAL = np.array([18, 255, 255])
 
-# Pelota naranja modo brillo / sombra dificil
+# Pelota naranja modo brillo
 NARANJA_BAJO_BRILLO = np.array([3, 90, 80])
 NARANJA_ALTO_BRILLO = np.array([18, 255, 255])
 
@@ -49,16 +48,16 @@ KERNEL_GOAL = np.ones((7, 7), np.uint8)
 
 # =========================================================
 # TRACKING PELOTA
-# =========================================================
+
 CIRC_MIN = 0.15              # mas bajo = acepta pelota menos circular
 AREA_MIN_BASE = 150          # mas bajo = detecta pelota mas pequena/lejana
 MIN_ORANGE_FILL = 0.10       # mas bajo = acepta pelota con reflejos/sombras
 
-MAX_LOST = 30                # frames que puede estimar antes de decir perdida total
+MAX_LOST = 30                # frames que puede estimar
 MAX_JUMP = 420               # salto maximo permitido entre detecciones
 
 # ROI dinamico
-ROI_PAD_OK = 140             # cuando la ve bien
+ROI_PAD_OK = 140           
 ROI_PAD_LOST_1 = 230         # cuando empieza a perderla
 ROI_PAD_LOST_2 = 340         # cuando lleva varios frames perdida
 
@@ -76,7 +75,7 @@ BLUR_KERNEL = (7, 7)
 
 # =========================================================
 # GUIAS
-# =========================================================
+
 GUIDE_CENTER_X = 0.50
 GUIDE_TOL_X = 0.05
 Y_TOL = 15
@@ -84,7 +83,7 @@ CAPTURE_ALPHA = 0.35
 
 # =========================================================
 # PORTERIA
-# =========================================================
+
 AREA_PORTERIA_MIN = 800
 
 
@@ -169,7 +168,7 @@ class BallTracker:
         self.prev_gray = None
         self.confidence = 0.0
 
-        # Filtro Kalman: estado [x, y, vx, vy], medicion [x, y]
+        # Filtro Kalman
         self.kalman = cv2.KalmanFilter(4, 2)
         self.kalman.measurementMatrix = np.array([
             [1, 0, 0, 0],
@@ -198,7 +197,7 @@ class BallTracker:
         brillo = float(np.mean(hsv[:, :, 2]))
         saturacion = float(np.mean(hsv[:, :, 1]))
 
-        # Si hay mucho brillo o poca saturacion, usa rango mas permisivo
+        # Si hay mucho brillo o poca saturacion
         if brillo > 170 or saturacion < 95:
             return NARANJA_BAJO_BRILLO, NARANJA_ALTO_BRILLO, brillo, "BRILLO"
 
@@ -237,7 +236,7 @@ class BallTracker:
 
         # =====================================================
         # DETECTAR PORTERIA
-        # =====================================================
+        
         goal_x, goal_y, goal_area = detectar_porteria(frame)
 
         origin_x = int(W * GUIDE_CENTER_X)
@@ -250,7 +249,7 @@ class BallTracker:
 
         # =====================================================
         # PREDICCION KALMAN / ROI DINAMICO
-        # =====================================================
+       
         pred = self._kalman_predict()
 
         if self.last_center is not None and self.lost_frames < MAX_LOST:
@@ -274,7 +273,7 @@ class BallTracker:
 
         # =====================================================
         # HSV PELOTA + BRILLO ADAPTATIVO
-        # =====================================================
+        
         roi_blur = cv2.GaussianBlur(roi, BLUR_KERNEL, 0)
         hsv = cv2.cvtColor(roi_blur, cv2.COLOR_BGR2HSV)
         naranja_bajo, naranja_alto, brillo, modo_luz = self._hsv_naranja_adaptativo(hsv)
@@ -285,11 +284,10 @@ class BallTracker:
 
         # =====================================================
         # MASCARA DE MOVIMIENTO
-        # =====================================================
+        
         motion = None
         roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
 
-        # Para que el tamano coincida con ROI actual, solo uso motion cuando prev_gray tiene igual tamano
         if USE_MOTION and self.prev_gray is not None and self.prev_gray.shape == roi_gray.shape:
             motion = self._motion_mask(roi_gray)
 
@@ -350,7 +348,7 @@ class BallTracker:
                     if motion_area > MOTION_MIN_AREA:
                         motion_bonus = min(40.0, motion_area * 0.02)
 
-            # Tolerante: no necesita cumplir todo perfecto.
+            # Tolerante
             cerca_de_antes = dist < 100 if self.last_center is not None else False
             forma_aceptable = circ >= CIRC_MIN
             relleno_aceptable = fill >= MIN_ORANGE_FILL
@@ -361,7 +359,7 @@ class BallTracker:
             if not relleno_aceptable and not cerca_de_antes:
                 continue
 
-            # Puntaje: area + relleno naranja + circularidad + movimiento - salto raro
+            # Puntaje
             score = 0.0
             score += area * 0.015
             score += fill * 120.0
@@ -375,7 +373,7 @@ class BallTracker:
 
         # =====================================================
         # DEBUG
-        # =====================================================
+        
         debug = frame.copy()
 
         cxg = origin_x
@@ -408,7 +406,7 @@ class BallTracker:
 
         # =====================================================
         # SI ENCONTRO PELOTA REAL
-        # =====================================================
+        
         if best_circle is not None:
             x, y, r, fill, circ, dist, area, score, motion_bonus = best_circle
 
@@ -448,7 +446,7 @@ class BallTracker:
 
         # =====================================================
         # SI NO ENCONTRO PELOTA: USAR ESTIMACION
-        # =====================================================
+        
         self.lost_frames += 1
         self.confidence = max(0.0, self.confidence - CONF_DOWN)
 
@@ -485,7 +483,7 @@ class BallTracker:
                 if motion is not None:
                     cv2.imshow("Movimiento ROI", motion)
 
-            # found=True porque main puede seguir la estimacion unos frames.
+           
             return est_x, est_y, est_r, True, capture, error_x_goal, debug, error_x, error_y
 
         # Perdida total
@@ -509,7 +507,7 @@ class BallTracker:
 
 # =========================================================
 # MODO PRUEBA: correr solo este archivo para ver la camara
-# =========================================================
+
 def probar_vision():
     tracker = BallTracker(
         cam_index=STANDALONE_CAM_INDEX,

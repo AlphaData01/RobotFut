@@ -2,15 +2,12 @@ import cv2
 import numpy as np
 from huskylib import HuskyLensLibrary
 
-
 class VisionHusky:
     def __init__(self, mostrar=True):
         self.husky = HuskyLensLibrary("I2C", "")
         self.mostrar = mostrar
 
         self.PELOTA_ID = 1
-        self.PORTERIA_AZUL_ID = 2
-        self.PORTERIA_AMARILLA_ID = 3
 
         self.W = 320
         self.H = 240
@@ -28,46 +25,28 @@ class VisionHusky:
     def limitar(self, valor):
         return max(min(valor, self.V_MAX), -self.V_MAX)
 
-    def leer_objetos(self):
-        detecciones = {
-            "pelota": None,
-            "porteria_azul": None,
-            "porteria_amarilla": None
-        }
-
+    def get_pelota(self):
         bloques = self.husky.requestAll()
 
         for b in bloques:
-            objeto = {
-                "id": b.ID,
-                "x": b.x,
-                "y": b.y,
-                "w": b.width,
-                "h": b.height
-            }
-
             if b.ID == self.PELOTA_ID:
-                detecciones["pelota"] = objeto
+                return {
+                    "id": b.ID,
+                    "x": b.x,
+                    "y": b.y,
+                    "w": b.width,
+                    "h": b.height
+                }
 
-            elif b.ID == self.PORTERIA_AZUL_ID:
-                detecciones["porteria_azul"] = objeto
-
-            elif b.ID == self.PORTERIA_AMARILLA_ID:
-                detecciones["porteria_amarilla"] = objeto
-
-        return detecciones
+        return None
 
     def leer(self):
-        pelota = self.leer_objetos()["pelota"]
+        pelota = self.get_pelota()
 
         vx = 0
         vy = 0
-        error_x = 0
-        error_y = 0
-        dentro_x = False
-        dentro_y = False
-        dentro_rango = False
         estado = "HUSKY SIN PELOTA"
+        dentro_rango = False
 
         if pelota is not None:
             x = pelota["x"]
@@ -99,14 +78,8 @@ class VisionHusky:
         return {
             "detectada": pelota is not None,
             "pelota": pelota,
-            "x": None if pelota is None else pelota["x"],
-            "y": None if pelota is None else pelota["y"],
             "vx": vx,
             "vy": vy,
-            "error_x": error_x,
-            "error_y": error_y,
-            "dentro_x": dentro_x,
-            "dentro_y": dentro_y,
             "dentro_rango": dentro_rango,
             "estado": estado
         }
@@ -131,6 +104,7 @@ class VisionHusky:
             h = int(pelota["h"])
 
             cv2.circle(frame, (x, y), 8, (0, 165, 255), -1)
+
             cv2.rectangle(
                 frame,
                 (x - w // 2, y - h // 2),

@@ -4,7 +4,7 @@ import serial
 ser = None
 
 
-def connect(port="/dev/ttyACM0", baud=115200):
+def connect(port="/dev/ttyUSB0", baud=115200):
     global ser
     ser = serial.Serial(port, baud, timeout=0.01, write_timeout=0.01)
     time.sleep(2)

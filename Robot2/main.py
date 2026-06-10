@@ -7,7 +7,7 @@ import Control
 
 # ---------------- CONEXION SERIAL ----------------
 # Ubuntu normalmente:
-Control.connect("/dev/ttyACM0")
+Control.connect("/dev/ttyUSB0")
 
 # Windows seria algo como:
 # Control.connect("COM5")
@@ -19,13 +19,16 @@ vision_husky = VisionHusky(mostrar=True)
 
 
 # ---------------- CONTROL 360 ----------------
-KP_360_X = 0.01
-KP_360_Y = 0.01
-V_MAX = 1.0
+KP_360_X = 0.005
+KP_360_Y = 0.004
+V_MAX_360 = 0.5
+
+# ---------------- CONTROL HUSKY ----------------
+V_MAX_HUSKY = 0.3
 
 
-def limitar(valor):
-    return max(min(valor, V_MAX), -V_MAX)
+def limitar(valor, v_max):
+    return max(min(valor, v_max), -v_max)
 
 
 try:
@@ -34,6 +37,7 @@ try:
         vx = 0
         vy = 0
         estado = "INICIO"
+        fuente = "NINGUNA"
 
         # =====================================================
         # PRIORIDAD 1: HUSKY
@@ -42,9 +46,18 @@ try:
 
         if datos_husky["detectada"]:
 
-            vx = datos_husky["vx"]
-            vy = datos_husky["vy"]
+            # IMPORTANTE:
+            # Se respetan tus ejes cruzados:
+            # lo que Husky calcula como vx se manda a vy
+            # lo que Husky calcula como vy se manda a vx
+            vy = datos_husky["vx"]
+            vx = datos_husky["vy"]
+
+            vx = limitar(vx, V_MAX_HUSKY)
+            vy = limitar(vy, V_MAX_HUSKY)
+
             estado = datos_husky["estado"]
+            fuente = "HUSKY"
 
         # =====================================================
         # PRIORIDAD 2: CAMARA 360
@@ -62,23 +75,27 @@ try:
                     vx = 0
                     vy = 0
                     estado = "360 ESPERANDO HUSKY"
+                    fuente = "360"
 
                 else:
                     error_x = datos_360["x"] - vision_360.CAP_X
                     error_y = datos_360["y"] - vision_360.CAP_Y
 
-                    vx = -KP_360_X * error_x
-                    vy = -KP_360_Y * error_y
+                    # Se respetan tus signos originales
+                    vx = KP_360_X * error_x
+                    vy = KP_360_Y * error_y
 
-                    vx = limitar(vx)
-                    vy = limitar(vy)
+                    vx = limitar(vx, V_MAX_360)
+                    vy = limitar(vy, V_MAX_360)
 
                     estado = "360 ALINEAR"
+                    fuente = "360"
 
             else:
                 vx = 0
                 vy = 0
                 estado = "SIN PELOTA"
+                fuente = "NINGUNA"
 
         # =====================================================
         # ENVIAR AL ROBOT
@@ -92,7 +109,10 @@ try:
             modo="G"
         )
 
-        print(f"[{estado}] Ux={vx:.2f} Uy={vy:.2f}")
+        print(
+            f"[{fuente} | {estado}] "
+            f"Ux={vx:.2f} Uy={vy:.2f}"
+        )
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break

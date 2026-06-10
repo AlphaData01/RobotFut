@@ -41,8 +41,8 @@ class Vision:
 
         # Tolerancia cuando se pierde la pelota
         self.frames_perdidos = 0
-        self.MAX_FRAMES_BUSQUEDA = 40
-        self.MAX_FRAMES_PERDIDOS = 120
+        self.MAX_FRAMES_BUSQUEDA = 5
+        self.MAX_FRAMES_PERDIDOS = 10
 
         # Radio donde se busca la pelota si se pierde
         self.RADIO_BUSQUEDA_LOCAL = 80
@@ -139,7 +139,7 @@ class Vision:
                     (ty - self.CY) ** 2
                 )
 
-                if distancia_centro > self.RADIO_ROBOT + 90:
+                if distancia_centro > self.RADIO_ROBOT + 140:
                     continue
 
                 score = area

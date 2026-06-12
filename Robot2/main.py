@@ -1,34 +1,60 @@
 import cv2
+import time
 
 from Vision import Vision
 from vision_husky import VisionHusky
 import Control
 
-
-# ---------------- CONEXION SERIAL ----------------
-# Ubuntu normalmente:
 Control.connect("/dev/ttyUSB0")
 
-# Windows seria algo como:
-# Control.connect("COM5")
-
-
-# ---------------- VISION ----------------
 vision_360 = Vision(cam_id=0, mostrar=True)
 vision_husky = VisionHusky(mostrar=True)
 
-
-# ---------------- CONTROL 360 ----------------
+# ---------------- PELOTA 360 ----------------
 KP_360_X = 0.005
 KP_360_Y = 0.004
 V_MAX_360 = 0.5
 
-# ---------------- CONTROL HUSKY ----------------
-V_MAX_HUSKY = 0.3
+# ---------------- HUSKY PELOTA ----------------
+V_MAX_HUSKY = 0.25
+
+# ---------------- PORTERIA HUSKY ----------------
+PORTERIA_OBJETIVO = "azul"   # "azul" o "amarilla"
+
+KP_PORTERIA_X = 0.004
+KP_PORTERIA_Y = 0.004
+V_MAX_PORTERIA = 0.25
+
+TOL_PORTERIA_X = 10
+TOL_PORTERIA_Y = 10
+
+PORTERIA_CAP_X = 100
+PORTERIA_CAP_Y = 70
+
+PORTERIA_MIN_W = 5
+
+# ---------------- MOVIMIENTOS ----------------
+AVANCE_CAPTURA_UX = 0.50
+AVANCE_CAPTURA_UY = 0.00
+TIEMPO_AVANCE_CAPTURA = 3.0
+
+BUSCAR_PORTERIA = 0.40
+
+TIEMPO_TIRO = 0.1
+
+estado_robot = "BUSCAR_PELOTA"
+t_estado = time.time()
 
 
 def limitar(valor, v_max):
     return max(min(valor, v_max), -v_max)
+
+
+def cambiar_estado(nuevo_estado):
+    global estado_robot, t_estado
+    estado_robot = nuevo_estado
+    t_estado = time.time()
+    print(f"\nCAMBIO ESTADO -> {estado_robot}\n")
 
 
 try:
@@ -36,82 +62,189 @@ try:
 
         vx = 0
         vy = 0
-        estado = "INICIO"
-        fuente = "NINGUNA"
+        ut = 0
+        patada = 0
+        cilindro = 0
 
-        # =====================================================
-        # PRIORIDAD 1: HUSKY
-        # =====================================================
+        fuente = "NINGUNA"
+        estado = "INICIO"
+
         datos_husky = vision_husky.leer()
 
-        if datos_husky["detectada"]:
-
-            # IMPORTANTE:
-            # Se respetan tus ejes cruzados:
-            # lo que Husky calcula como vx se manda a vy
-            # lo que Husky calcula como vy se manda a vx
-            vy = datos_husky["vx"]
-            vx = datos_husky["vy"]
-
-            vx = limitar(vx, V_MAX_HUSKY)
-            vy = limitar(vy, V_MAX_HUSKY)
-
-            estado = datos_husky["estado"]
-            fuente = "HUSKY"
-
         # =====================================================
-        # PRIORIDAD 2: CAMARA 360
+        # ESTADO 1: BUSCAR PELOTA
         # =====================================================
-        else:
+        if estado_robot == "BUSCAR_PELOTA":
 
-            datos_360 = vision_360.leer()
+            if datos_husky["detectada"]:
 
-            if datos_360 is None:
-                break
+                # Se respetan tus ejes cruzados
+                vy = datos_husky["vx"]
+                vx = datos_husky["vy"]
 
-            if datos_360["valida"]:
+                vx = limitar(vx, V_MAX_HUSKY)
+                vy = limitar(vy, V_MAX_HUSKY)
 
-                if datos_360["dentro_rango"]:
-                    vx = 0
-                    vy = 0
-                    estado = "360 ESPERANDO HUSKY"
-                    fuente = "360"
+                fuente = "HUSKY"
+                estado = datos_husky["estado"]
 
-                else:
-                    error_x = datos_360["x"] - vision_360.CAP_X
-                    error_y = datos_360["y"] - vision_360.CAP_Y
-
-                    # Se respetan tus signos originales
-                    vx = KP_360_X * error_x
-                    vy = KP_360_Y * error_y
-
-                    vx = limitar(vx, V_MAX_360)
-                    vy = limitar(vy, V_MAX_360)
-
-                    estado = "360 ALINEAR"
-                    fuente = "360"
+                if datos_husky["dentro_rango"]:
+                    cambiar_estado("AVANZAR_A_RODILLO")
 
             else:
-                vx = 0
+                datos_360 = vision_360.leer()
+
+                if datos_360 is None:
+                    break
+
+                if datos_360["valida"]:
+
+                    if datos_360["dentro_rango"]:
+                        vx = 0
+                        vy = 0
+                        fuente = "360"
+                        estado = "360 ESPERANDO HUSKY"
+
+                    else:
+                        error_x = datos_360["x"] - vision_360.CAP_X
+                        error_y = datos_360["y"] - vision_360.CAP_Y
+
+                        vx = KP_360_X * error_x
+                        vy = KP_360_Y * error_y
+
+                        vx = limitar(vx, V_MAX_360)
+                        vy = limitar(vy, V_MAX_360)
+
+                        fuente = "360"
+                        estado = "360 ALINEAR"
+
+                else:
+                    vx = 0
+                    vy = 0
+                    fuente = "NINGUNA"
+                    estado = "SIN PELOTA"
+
+        # =====================================================
+        # ESTADO 2: AVANZAR PARA AGARRAR PELOTA
+        # IMPORTANTE: AQUI IGNORA LA PORTERIA
+        # =====================================================
+        elif estado_robot == "AVANZAR_A_RODILLO":
+
+            vx = AVANCE_CAPTURA_UX
+            vy = AVANCE_CAPTURA_UY
+            ut = 0
+
+            patada = 0
+            cilindro = 1
+
+            fuente = "SECUENCIA"
+            estado = "AGARRANDO PELOTA"
+
+            if time.time() - t_estado >= TIEMPO_AVANCE_CAPTURA:
+                cambiar_estado("BUSCAR_PORTERIA")
+
+        # =====================================================
+        # ESTADO 3: BUSCAR PORTERIA SOLO CON HUSKY
+        # =====================================================
+        elif estado_robot == "BUSCAR_PORTERIA":
+
+            patada = 0
+            cilindro = 1
+
+            if PORTERIA_OBJETIVO == "azul":
+                porteria = datos_husky["porteria_azul"]
+            else:
+                porteria = datos_husky["porteria_amarilla"]
+
+            if porteria is not None:
+                cambiar_estado("ALINEAR_PORTERIA")
+
+            else:
+                vx = BUSCAR_PORTERIA
                 vy = 0
-                estado = "SIN PELOTA"
-                fuente = "NINGUNA"
+                ut = 0
+
+                fuente = "HUSKY"
+                estado = "BUSCANDO PORTERIA"
+
+        # =====================================================
+        # ESTADO 4: ALINEAR PORTERIA
+        # =====================================================
+        elif estado_robot == "ALINEAR_PORTERIA":
+
+            patada = 0
+            cilindro = 1
+
+            if PORTERIA_OBJETIVO == "azul":
+                porteria = datos_husky["porteria_azul"]
+            else:
+                porteria = datos_husky["porteria_amarilla"]
+
+            if porteria is None:
+                cambiar_estado("BUSCAR_PORTERIA")
+
+            else:
+                error_x = porteria["x"] - PORTERIA_CAP_X
+                error_y = porteria["y"] - PORTERIA_CAP_Y
+
+                centrada_x = abs(error_x) <= TOL_PORTERIA_X
+                centrada_y = abs(error_y) <= TOL_PORTERIA_Y
+                cerca = porteria["w"] >= PORTERIA_MIN_W
+
+                if cerca:
+                    cambiar_estado("TIRAR_UNA_VEZ")
+
+                else:
+                    vx = -KP_PORTERIA_Y * error_y
+                    vy = -KP_PORTERIA_X * error_x
+                    ut = 0
+
+                    vx = limitar(vx, V_MAX_PORTERIA)
+                    vy = limitar(vy, V_MAX_PORTERIA)
+
+                    fuente = "HUSKY"
+                    estado = f"ALINEANDO PORTERIA centrada_x={centrada_x} centrada_y={centrada_y} cerca={cerca}"
+
+        # =====================================================
+        # ESTADO 5: TIRAR SOLO UNA VEZ
+        # =====================================================
+        elif estado_robot == "TIRAR_UNA_VEZ":
+
+            vx = 0
+            vy = 0
+            ut = 0
+
+            patada = 1
+            cilindro = 0
+
+            fuente = "DISPARO"
+            estado = "TIRANDO UNA VEZ"
+
+            if time.time() - t_estado >= TIEMPO_TIRO:
+                cilindro = 0
+                patada = 0
+                cambiar_estado("BUSCAR_PELOTA")
 
         # =====================================================
         # ENVIAR AL ROBOT
         # =====================================================
+        vx = limitar(vx, 1.0)
+        vy = limitar(vy, 1.0)
+        ut = limitar(ut, 1.0)
+
         Control.send(
             Ux=vx,
             Uy=vy,
-            Ut=0,
-            patada=0,
-            cilindro=0,
+            Ut=ut,
+            patada=patada,
+            cilindro=cilindro,
             modo="G"
         )
 
         print(
-            f"[{fuente} | {estado}] "
-            f"Ux={vx:.2f} Uy={vy:.2f}"
+            f"[{estado_robot} | {fuente} | {estado}] "
+            f"Ux={vx:.2f} Uy={vy:.2f} Ut={ut:.2f} "
+            f"Patada={patada} Cil={cilindro}"
         )
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -123,7 +256,7 @@ except KeyboardInterrupt:
 
 
 finally:
-    Control.send(0, 0, 0)
+    Control.send(0, 0, 0, 0, 0, "G")
     Control.close()
     vision_360.cerrar()
     cv2.destroyAllWindows()

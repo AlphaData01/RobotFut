@@ -9,12 +9,15 @@ class VisionHusky:
         self.mostrar = mostrar
 
         self.PELOTA_ID = 1
+        self.PORTERIA_AZUL_ID = 2
+        self.PORTERIA_AMARILLA_ID = 3
 
         self.W = 320
         self.H = 240
 
+        # Zona de captura de pelota con Husky
         self.CAP_X = 160
-        self.CAP_Y = 190
+        self.CAP_Y = 210
 
         self.TOL_X = 35
         self.TOL_Y = 20
@@ -26,23 +29,38 @@ class VisionHusky:
     def limitar(self, valor):
         return max(min(valor, self.V_MAX), -self.V_MAX)
 
-    def get_pelota(self):
+    def leer_objetos(self):
+        detecciones = {
+            "pelota": None,
+            "porteria_azul": None,
+            "porteria_amarilla": None
+        }
+
         bloques = self.husky.requestAll()
 
         for b in bloques:
-            if b.ID == self.PELOTA_ID:
-                return {
-                    "id": b.ID,
-                    "x": b.x,
-                    "y": b.y,
-                    "w": b.width,
-                    "h": b.height
-                }
+            objeto = {
+                "id": b.ID,
+                "x": b.x,
+                "y": b.y,
+                "w": b.width,
+                "h": b.height
+            }
 
-        return None
+            if b.ID == self.PELOTA_ID:
+                detecciones["pelota"] = objeto
+
+            elif b.ID == self.PORTERIA_AZUL_ID:
+                detecciones["porteria_azul"] = objeto
+
+            elif b.ID == self.PORTERIA_AMARILLA_ID:
+                detecciones["porteria_amarilla"] = objeto
+
+        return detecciones
 
     def leer(self):
-        pelota = self.get_pelota()
+        detecciones = self.leer_objetos()
+        pelota = detecciones["pelota"]
 
         vx = 0
         vy = 0
@@ -74,26 +92,31 @@ class VisionHusky:
                 estado = "HUSKY ALINEAR"
 
         if self.mostrar:
-            self.dibujar(pelota, vx, vy, estado)
+            self.dibujar(detecciones, vx, vy, estado)
 
         return {
             "detectada": pelota is not None,
             "pelota": pelota,
+            "porteria_azul": detecciones["porteria_azul"],
+            "porteria_amarilla": detecciones["porteria_amarilla"],
             "vx": vx,
             "vy": vy,
             "dentro_rango": dentro_rango,
             "estado": estado
         }
 
-    def dibujar(self, pelota, vx, vy, estado):
+    def dibujar(self, detecciones, vx, vy, estado):
         frame = np.zeros((self.H, self.W, 3), dtype=np.uint8)
+
+        pelota = detecciones["pelota"]
+        porteria_azul = detecciones["porteria_azul"]
+        porteria_amarilla = detecciones["porteria_amarilla"]
 
         x1 = self.CAP_X - self.TOL_X
         x2 = self.CAP_X + self.TOL_X
 
         cv2.line(frame, (x1, 0), (x1, self.H), (0, 0, 255), 3)
         cv2.line(frame, (x2, 0), (x2, self.H), (0, 0, 255), 3)
-
         cv2.line(frame, (0, self.CAP_Y), (self.W, self.CAP_Y), (0, 255, 0), 3)
 
         cv2.circle(frame, (self.CAP_X, self.CAP_Y), 5, (0, 255, 255), -1)
@@ -105,6 +128,37 @@ class VisionHusky:
             h = int(pelota["h"])
 
             cv2.circle(frame, (x, y), 8, (0, 165, 255), -1)
+            cv2.rectangle(
+                frame,
+                (x - w // 2, y - h // 2),
+                (x + w // 2, y + h // 2),
+                (0, 255, 255),
+                2
+            )
+            cv2.putText(frame, "Pelota ID1", (x + 10, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+        if porteria_azul is not None:
+            x = int(porteria_azul["x"])
+            y = int(porteria_azul["y"])
+            w = int(porteria_azul["w"])
+            h = int(porteria_azul["h"])
+
+            cv2.rectangle(
+                frame,
+                (x - w // 2, y - h // 2),
+                (x + w // 2, y + h // 2),
+                (255, 0, 0),
+                2
+            )
+            cv2.putText(frame, "Azul ID2", (x + 10, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+        if porteria_amarilla is not None:
+            x = int(porteria_amarilla["x"])
+            y = int(porteria_amarilla["y"])
+            w = int(porteria_amarilla["w"])
+            h = int(porteria_amarilla["h"])
 
             cv2.rectangle(
                 frame,
@@ -113,8 +167,7 @@ class VisionHusky:
                 (0, 255, 255),
                 2
             )
-
-            cv2.putText(frame, "Pelota ID1", (x + 10, y - 10),
+            cv2.putText(frame, "Amarilla ID3", (x + 10, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
         cv2.putText(frame, estado, (10, 25),

@@ -14,7 +14,7 @@ def connect(port="/dev/ttyUSB0", baud=115200):
 def close():
     global ser
     if ser:
-        send(0, 0, 0)
+        send(0, 0, 0, 0, 0, "G")
         ser.close()
         print("Serial cerrado")
     ser = None
@@ -34,6 +34,8 @@ def send(Ux=0, Uy=0, Ut=0, patada=0, cilindro=0, modo="G"):
         Ux = clamp(Ux)
         Uy = clamp(Uy)
         Ut = clamp(Ut)
+
+        modo = "G"
 
         line = f"M,{Ux:.3f},{Uy:.3f},{Ut:.3f},{int(patada)},{int(cilindro)},{modo}\n"
         ser.write(line.encode("ascii"))

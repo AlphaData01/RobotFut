@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 
+
 class Vision:
     # Constructor
     def __init__(self, cam_id=0, mostrar=True):
@@ -12,8 +13,12 @@ class Vision:
         self.naranja_alto = np.array([12, 255, 255])
 
         # Color Porteria Azul
-        
+        self.azul_bajo = np.array([90, 80, 50])
+        self.azul_alto = np.array([130, 255, 255])
+
         # Color Porteria Amarilla
+        self.amarillo_bajo = np.array([20, 80, 80])
+        self.amarillo_alto = np.array([35, 255, 255])
 
         # Ajustes de captura
         self.CX, self.CY = 320, 240 # Centro del robot (punto rojo)
@@ -30,7 +35,7 @@ class Vision:
 
         self.RADIO_CAPTURA = int(np.sqrt(dx_cap ** 2 + dy_cap ** 2))
         self.ANGULO_CAPTURA = np.degrees(np.arctan2(dy_cap, dx_cap))
-        
+
         self.TOL_RADIO = 20
         self.TOL_ANGULO = 18
 
@@ -70,14 +75,14 @@ class Vision:
     # Funcion para calcular diferencia de angulos
     def diferencia_angulo(self, a, b):
         return (a - b + 180) % 360 - 180
-    
+
     # Funcion Princial
     def leer(self):
         ret, frame = self.cam.read()
 
         if not ret:
             return None
-        
+
         # Obtener tamaño
         h, w = frame.shape[:2]
         centro_img = (w // 2, h // 2)
@@ -91,12 +96,12 @@ class Vision:
         # Agrandar pixeles detectados sin borrar pelota lejana
         kernel = np.ones((2, 2), np.uint8)
         mask = cv2.dilate(mask, kernel, iterations=1)
-        
+
         # Buscar pixeles blancos
         contornos, _ = cv2.findContours(
             mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
-        
+
         # Prediccion de Kalman
         pred = self.kalman.predict()
         px, py = int(pred[0, 0]), int(pred[1, 0])
@@ -104,7 +109,7 @@ class Vision:
         pelota_detectada = False
         x, y, r = None, None, None
         estado_pelota = "SIN_PELOTA"
-        
+
         # Si existe algun objeto naranja
         if contornos:
 
@@ -165,7 +170,7 @@ class Vision:
                 # Dibujar el circulo de la pelota
                 (x, y), r = cv2.minEnclosingCircle(mejor_contorno)
                 x, y, r = int(x), int(y), max(int(r), 3)
-                
+
                 # Inicializar Kalman
                 if not self.iniciado:
                     self.kalman.statePost = np.array([[x], [y], [0], [0]], np.float32)
@@ -274,7 +279,65 @@ class Vision:
             "dentro_radio": dentro_radio,
             "dentro_rango": dentro_rango
         }
-    
+
+    # ----- Buscar porteria con camara 360 -----
+    def buscar_porteria(self, objetivo="azul"):
+        ret, frame = self.cam.read()
+
+        if not ret:
+            return None
+
+        h, w = frame.shape[:2]
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+        if objetivo == "azul":
+            mask = cv2.inRange(hsv, self.azul_bajo, self.azul_alto)
+            color = (255, 0, 0)
+        else:
+            mask = cv2.inRange(hsv, self.amarillo_bajo, self.amarillo_alto)
+            color = (0, 255, 255)
+
+        kernel = np.ones((3, 3), np.uint8)
+        mask = cv2.dilate(mask, kernel, iterations=1)
+
+        contornos, _ = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        porteria_detectada = False
+        x, y = None, None
+        area = 0
+
+        if contornos:
+            c = max(contornos, key=cv2.contourArea)
+            area = cv2.contourArea(c)
+
+            if area > 5:
+                M = cv2.moments(c)
+
+                if M["m00"] != 0:
+                    x = int(M["m10"] / M["m00"])
+                    y = int(M["m01"] / M["m00"])
+                    porteria_detectada = True
+
+        if self.mostrar:
+            cv2.circle(frame, (self.CX, self.CY), self.RADIO_ROBOT, (0, 0, 0), 3)
+
+            if porteria_detectada:
+                cv2.circle(frame, (x, y), 8, color, -1)
+                cv2.putText(frame, "Porteria 360", (x + 10, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+            cv2.imshow("camara", frame)
+            cv2.imshow("Mascara Porteria 360", mask)
+
+        return {
+            "detectada": porteria_detectada,
+            "x": x,
+            "y": y,
+            "area": area
+        }
+
     # ----- Dibujar zona curva -----
     def dibujar_zona_curva(self, frame):
         # Arcos de radio interno y externo
@@ -284,7 +347,6 @@ class Vision:
         angulo_inicio = int(self.ANGULO_CAPTURA - self.TOL_ANGULO)
         angulo_fin = int(self.ANGULO_CAPTURA + self.TOL_ANGULO)
 
-        # OpenCV usa grados desde el eje X
         cv2.ellipse(
             frame,
             (self.CX, self.CY),
@@ -321,9 +383,6 @@ class Vision:
 
     # ----- Dibujar sobre la pantalla -----
     def _dibujar(self, frame, mask, centro_img, pelota_valida, x, y, r, px, py, dentro_rango, estado_pelota):
-        h, w = frame.shape[:2]
-
-        # Punto verde = pelota real o ultima pelota confiable
         if pelota_valida and x is not None and y is not None:
             cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
             cv2.circle(frame, (x, y), 3, (0, 0, 255), -1)
@@ -335,7 +394,7 @@ class Vision:
             cv2.circle(frame, (px, py), 5, (255, 0, 0), -1)
             cv2.putText(frame, "K", (px + 8, py + 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-        
+
         # Circulo limite del robot
         cv2.circle(frame, (self.CX, self.CY), self.RADIO_ROBOT, (0, 0, 0), 3)
 
@@ -378,7 +437,7 @@ class Vision:
         # Mostrar ventanas
         cv2.imshow("camara", frame)
         cv2.imshow("Mascara", mask)
-    
+
     # ----- Cerrar ventanas -----
     def cerrar(self):
         self.cam.release()

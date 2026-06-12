@@ -22,6 +22,13 @@ class VisionHusky:
         self.TOL_X = 35
         self.TOL_Y = 20
 
+        # Zona rosa para disparar a porteria con Husky
+        # Ajusta estos valores si quieres mover o cambiar el tamaño del cuadro.
+        self.PORTERIA_ZONA_X1 = 95
+        self.PORTERIA_ZONA_Y1 = 20
+        self.PORTERIA_ZONA_X2 = 205
+        self.PORTERIA_ZONA_Y2 = 60
+
         self.KP_X = kp_x
         self.KP_Y = kp_y
         self.V_MAX = v_max
@@ -57,6 +64,28 @@ class VisionHusky:
                 detecciones["porteria_amarilla"] = objeto
 
         return detecciones
+
+    def porteria_en_zona_tiro(self, porteria):
+        if porteria is None:
+            return False
+
+        x = int(porteria["x"])
+        y = int(porteria["y"])
+        w = int(porteria["w"])
+        h = int(porteria["h"])
+
+        px1 = x - w // 2
+        py1 = y - h // 2
+        px2 = x + w // 2
+        py2 = y + h // 2
+
+        # True si aunque sea una parte pequeña de la porteria entra al cuadro rosa
+        return (
+            px2 >= self.PORTERIA_ZONA_X1 and
+            px1 <= self.PORTERIA_ZONA_X2 and
+            py2 >= self.PORTERIA_ZONA_Y1 and
+            py1 <= self.PORTERIA_ZONA_Y2
+        )
 
     def leer(self):
         detecciones = self.leer_objetos()
@@ -99,6 +128,8 @@ class VisionHusky:
             "pelota": pelota,
             "porteria_azul": detecciones["porteria_azul"],
             "porteria_amarilla": detecciones["porteria_amarilla"],
+            "porteria_azul_en_zona_tiro": self.porteria_en_zona_tiro(detecciones["porteria_azul"]),
+            "porteria_amarilla_en_zona_tiro": self.porteria_en_zona_tiro(detecciones["porteria_amarilla"]),
             "vx": vx,
             "vy": vy,
             "dentro_rango": dentro_rango,
@@ -120,6 +151,15 @@ class VisionHusky:
         cv2.line(frame, (0, self.CAP_Y), (self.W, self.CAP_Y), (0, 255, 0), 3)
 
         cv2.circle(frame, (self.CAP_X, self.CAP_Y), 5, (0, 255, 255), -1)
+
+        # Cuadro rosa: zona pequeña donde, si entra la porteria, cambia a patear
+        cv2.rectangle(
+            frame,
+            (self.PORTERIA_ZONA_X1, self.PORTERIA_ZONA_Y1),
+            (self.PORTERIA_ZONA_X2, self.PORTERIA_ZONA_Y2),
+            (255, 0, 255),
+            3
+        )
 
         if pelota is not None:
             x = int(pelota["x"])

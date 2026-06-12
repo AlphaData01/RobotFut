@@ -42,6 +42,11 @@ BUSCAR_PORTERIA = 0.40
 
 TIEMPO_TIRO = 0.1
 
+# ---------------- DESPUES DEL TIRO ----------------
+TIEMPO_ESPERA_DESPUES_TIRO = 2.0
+TIEMPO_RETROCESO = 5.0
+VELOCIDAD_RETROCESO = -0.25
+
 estado_robot = "BUSCAR_PELOTA"
 t_estado = time.time()
 
@@ -78,7 +83,6 @@ try:
 
             if datos_husky["detectada"]:
 
-                # Se respetan tus ejes cruzados
                 vy = datos_husky["vx"]
                 vx = datos_husky["vy"]
 
@@ -126,7 +130,6 @@ try:
 
         # =====================================================
         # ESTADO 2: AVANZAR PARA AGARRAR PELOTA
-        # IMPORTANTE: AQUI IGNORA LA PORTERIA
         # =====================================================
         elif estado_robot == "AVANZAR_A_RODILLO":
 
@@ -144,7 +147,7 @@ try:
                 cambiar_estado("BUSCAR_PORTERIA")
 
         # =====================================================
-        # ESTADO 3: BUSCAR PORTERIA SOLO CON HUSKY
+        # ESTADO 3: BUSCAR PORTERIA
         # =====================================================
         elif estado_robot == "BUSCAR_PORTERIA":
 
@@ -177,8 +180,10 @@ try:
 
             if PORTERIA_OBJETIVO == "azul":
                 porteria = datos_husky["porteria_azul"]
+                porteria_en_zona_tiro = datos_husky["porteria_azul_en_zona_tiro"]
             else:
                 porteria = datos_husky["porteria_amarilla"]
+                porteria_en_zona_tiro = datos_husky["porteria_amarilla_en_zona_tiro"]
 
             if porteria is None:
                 cambiar_estado("BUSCAR_PORTERIA")
@@ -187,11 +192,7 @@ try:
                 error_x = porteria["x"] - PORTERIA_CAP_X
                 error_y = porteria["y"] - PORTERIA_CAP_Y
 
-                centrada_x = abs(error_x) <= TOL_PORTERIA_X
-                centrada_y = abs(error_y) <= TOL_PORTERIA_Y
-                cerca = porteria["w"] >= PORTERIA_MIN_W
-
-                if cerca:
+                if porteria_en_zona_tiro:
                     cambiar_estado("TIRAR_UNA_VEZ")
 
                 else:
@@ -203,7 +204,7 @@ try:
                     vy = limitar(vy, V_MAX_PORTERIA)
 
                     fuente = "HUSKY"
-                    estado = f"ALINEANDO PORTERIA centrada_x={centrada_x} centrada_y={centrada_y} cerca={cerca}"
+                    estado = f"ALINEANDO PORTERIA zona_tiro={porteria_en_zona_tiro}"
 
         # =====================================================
         # ESTADO 5: TIRAR SOLO UNA VEZ
@@ -221,8 +222,44 @@ try:
             estado = "TIRANDO UNA VEZ"
 
             if time.time() - t_estado >= TIEMPO_TIRO:
-                cilindro = 0
                 patada = 0
+                cilindro = 0
+                cambiar_estado("ESPERAR_DESPUES_TIRO")
+
+        # =====================================================
+        # ESTADO 6: ESPERAR DESPUES DE TIRAR
+        # =====================================================
+        elif estado_robot == "ESPERAR_DESPUES_TIRO":
+
+            vx = 0
+            vy = 0
+            ut = 0
+
+            patada = 0
+            cilindro = 0
+
+            fuente = "ESPERA"
+            estado = "ESPERANDO DESPUES DEL TIRO"
+
+            if time.time() - t_estado >= TIEMPO_ESPERA_DESPUES_TIRO:
+                cambiar_estado("RETROCEDER_DESPUES_TIRO")
+
+        # =====================================================
+        # ESTADO 7: RETROCEDER DESPUES DE TIRAR
+        # =====================================================
+        elif estado_robot == "RETROCEDER_DESPUES_TIRO":
+
+            vx = VELOCIDAD_RETROCESO
+            vy = 0
+            ut = 0
+
+            patada = 0
+            cilindro = 0
+
+            fuente = "RETROCESO"
+            estado = "RETROCEDIENDO DESPUES DEL TIRO"
+
+            if time.time() - t_estado >= TIEMPO_RETROCESO:
                 cambiar_estado("BUSCAR_PELOTA")
 
         # =====================================================

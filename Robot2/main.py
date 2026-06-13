@@ -38,7 +38,7 @@ AVANCE_CAPTURA_UX = 0.50
 AVANCE_CAPTURA_UY = 0.00
 TIEMPO_AVANCE_CAPTURA = 3.0
 
-BUSCAR_PORTERIA = 0.40
+BUSCAR_PORTERIA = 0.50
 
 TIEMPO_TIRO = 0.1
 
@@ -62,6 +62,10 @@ def cambiar_estado(nuevo_estado):
     print(f"\nCAMBIO ESTADO -> {estado_robot}\n")
 
 
+def leer_sensor_captura():
+    return Control.leer_sensor() == 1
+
+
 try:
     while True:
 
@@ -75,6 +79,7 @@ try:
         estado = "INICIO"
 
         datos_husky = vision_husky.leer()
+        sensor_captura = leer_sensor_captura()
 
         # =====================================================
         # ESTADO 1: BUSCAR PELOTA
@@ -141,10 +146,17 @@ try:
             cilindro = 1
 
             fuente = "SECUENCIA"
-            estado = "AGARRANDO PELOTA"
 
-            if time.time() - t_estado >= TIEMPO_AVANCE_CAPTURA:
+            if sensor_captura:
+                estado = "PELOTA CAPTURADA POR SENSOR"
                 cambiar_estado("BUSCAR_PORTERIA")
+
+            elif time.time() - t_estado >= TIEMPO_AVANCE_CAPTURA:
+                estado = "NO SE CONFIRMO CAPTURA"
+                cambiar_estado("BUSCAR_PELOTA")
+
+            else:
+                estado = "AGARRANDO PELOTA"
 
         # =====================================================
         # ESTADO 3: BUSCAR PORTERIA
@@ -281,7 +293,7 @@ try:
         print(
             f"[{estado_robot} | {fuente} | {estado}] "
             f"Ux={vx:.2f} Uy={vy:.2f} Ut={ut:.2f} "
-            f"Patada={patada} Cil={cilindro}"
+            f"Patada={patada} Cil={cilindro} Sensor={int(sensor_captura)}"
         )
 
         if cv2.waitKey(1) & 0xFF == ord("q"):

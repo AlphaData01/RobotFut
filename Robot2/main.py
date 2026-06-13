@@ -33,11 +33,15 @@ PORTERIA_CAP_Y = 70
 
 PORTERIA_MIN_W = 5
 
+# ---------------- PORTERIA 360 ----------------
+KP_PORTERIA_360_X = 0.005
+KP_PORTERIA_360_Y = 0.004
+V_MAX_PORTERIA_360 = 0.5
+
 # ---------------- MOVIMIENTOS ----------------
 AVANCE_CAPTURA_UX = 0.50
 AVANCE_CAPTURA_UY = 0.00
-TIEMPO_AVANCE_CAPTURA = 3.0
-
+TIEMPO_AVANCE_CAPTURA = 1.5
 BUSCAR_PORTERIA = 0.50
 
 TIEMPO_TIRO = 0.1
@@ -159,64 +163,116 @@ try:
                 estado = "AGARRANDO PELOTA"
 
         # =====================================================
-        # ESTADO 3: BUSCAR PORTERIA
+        # ESTADO 3: BUSCAR PORTERIA CON 360
         # =====================================================
         elif estado_robot == "BUSCAR_PORTERIA":
 
             patada = 0
             cilindro = 1
 
-            if PORTERIA_OBJETIVO == "azul":
-                porteria = datos_husky["porteria_azul"]
-            else:
-                porteria = datos_husky["porteria_amarilla"]
-
-            if porteria is not None:
-                cambiar_estado("ALINEAR_PORTERIA")
-
-            else:
-                vx = BUSCAR_PORTERIA
+            if not sensor_captura:
+                vx = 0
                 vy = 0
                 ut = 0
+                cilindro = 0
 
-                fuente = "HUSKY"
-                estado = "BUSCANDO PORTERIA"
+                fuente = "SENSOR"
+                estado = "PELOTA PERDIDA - REGRESANDO A BUSCAR"
+                cambiar_estado("BUSCAR_PELOTA")
+
+            else:
+                if PORTERIA_OBJETIVO == "azul":
+                    porteria_husky = datos_husky["porteria_azul"]
+                else:
+                    porteria_husky = datos_husky["porteria_amarilla"]
+
+                if porteria_husky is not None:
+                    cambiar_estado("ALINEAR_PORTERIA")
+
+                else:
+                    porteria_360 = vision_360.buscar_porteria(PORTERIA_OBJETIVO)
+
+                    if porteria_360 is None:
+                        break
+
+                    if porteria_360["detectada"]:
+
+                        if porteria_360["dentro_rango"]:
+                            vx = 0
+                            vy = 0
+                            ut = 0
+
+                            fuente = "360"
+                            estado = "PORTERIA 360 EN ZONA - ESPERANDO HUSKY"
+
+                        else:
+                            error_x = porteria_360["x"] - vision_360.CAP_PORTERIA_X
+                            error_y = porteria_360["y"] - vision_360.CAP_PORTERIA_Y
+
+                            vx = KP_PORTERIA_360_X * error_x
+                            vy = KP_PORTERIA_360_Y * error_y
+                            ut = 0
+
+                            vx = limitar(vx, V_MAX_PORTERIA_360)
+                            vy = limitar(vy, V_MAX_PORTERIA_360)
+
+                            fuente = "360"
+                            estado = "ALINEANDO PORTERIA CON 360"
+
+                    else:
+                        vx = BUSCAR_PORTERIA
+                        vy = 0
+                        ut = 0
+
+                        fuente = "360"
+                        estado = "NO VEO PORTERIA 360 - BUSCANDO"
 
         # =====================================================
-        # ESTADO 4: ALINEAR PORTERIA
+        # ESTADO 4: ALINEAR PORTERIA CON HUSKY
         # =====================================================
         elif estado_robot == "ALINEAR_PORTERIA":
 
             patada = 0
             cilindro = 1
 
-            if PORTERIA_OBJETIVO == "azul":
-                porteria = datos_husky["porteria_azul"]
-                porteria_en_zona_tiro = datos_husky["porteria_azul_en_zona_tiro"]
+            if not sensor_captura:
+                vx = 0
+                vy = 0
+                ut = 0
+                cilindro = 0
+
+                fuente = "SENSOR"
+                estado = "PELOTA PERDIDA - REGRESANDO A BUSCAR"
+                cambiar_estado("BUSCAR_PELOTA")
+
             else:
-                porteria = datos_husky["porteria_amarilla"]
-                porteria_en_zona_tiro = datos_husky["porteria_amarilla_en_zona_tiro"]
+                if PORTERIA_OBJETIVO == "azul":
+                    porteria = datos_husky["porteria_azul"]
+                    porteria_en_zona_tiro = datos_husky["porteria_azul_en_zona_tiro"]
+                else:
+                    porteria = datos_husky["porteria_amarilla"]
+                    porteria_en_zona_tiro = datos_husky["porteria_amarilla_en_zona_tiro"]
 
-            if porteria is None:
-                cambiar_estado("BUSCAR_PORTERIA")
-
-            else:
-                error_x = porteria["x"] - PORTERIA_CAP_X
-                error_y = porteria["y"] - PORTERIA_CAP_Y
-
-                if porteria_en_zona_tiro:
-                    cambiar_estado("TIRAR_UNA_VEZ")
+                if porteria is None:
+                    cambiar_estado("BUSCAR_PORTERIA")
 
                 else:
-                    vx = -KP_PORTERIA_Y * error_y
-                    vy = -KP_PORTERIA_X * error_x
-                    ut = 0
+                    error_x = porteria["x"] - PORTERIA_CAP_X
+                    error_y = porteria["y"] - PORTERIA_CAP_Y
 
-                    vx = limitar(vx, V_MAX_PORTERIA)
-                    vy = limitar(vy, V_MAX_PORTERIA)
+                    if porteria_en_zona_tiro:
+                        cambiar_estado("TIRAR_UNA_VEZ")
 
-                    fuente = "HUSKY"
-                    estado = f"ALINEANDO PORTERIA zona_tiro={porteria_en_zona_tiro}"
+                    else:
+                        vx = -KP_PORTERIA_Y * error_y
+                        vy = -KP_PORTERIA_X * error_x
+                        ut = 0
+
+                        vx = limitar(vx, V_MAX_PORTERIA)
+                        vy = limitar(vy, V_MAX_PORTERIA)
+
+                        fuente = "HUSKY"
+                        estado = f"ALINEANDO PORTERIA zona_tiro={porteria_en_zona_tiro}"
 
         # =====================================================
         # ESTADO 5: TIRAR SOLO UNA VEZ

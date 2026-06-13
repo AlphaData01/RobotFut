@@ -12,21 +12,28 @@ class Vision:
         self.naranja_alto = np.array([11, 255, 255])
 
         # Color Porteria Azul
-        self.azul_bajo = np.array([90, 80, 50])
+        self.azul_bajo = np.array([100, 100, 50])
         self.azul_alto = np.array([130, 255, 255])
 
         # Color Porteria Amarilla
-        self.amarillo_bajo = np.array([20, 80, 80])
+        self.amarillo_bajo = np.array([17, 100, 100])
         self.amarillo_alto = np.array([35, 255, 255])
 
-        # Filtros contra ruido pequeño
         self.MIN_AREA_PELOTA = 20
         self.MIN_RADIO_PELOTA = 3
+        self.MIN_AREA_PORTERIA_360 = 300
 
-        # Ajustes de captura
+        # Centro del robot
         self.CX, self.CY = 320, 240
         self.RADIO_ROBOT = 155
+
+        # Punto de captura para PELOTA
         self.CAP_X, self.CAP_Y = 495, 240
+
+        # Punto de captura SOLO para PORTERIA 360
+        # Si quieres más al centro, baja este valor: 420 -> 400 -> 380
+        self.CAP_PORTERIA_X = 420
+        self.CAP_PORTERIA_Y = 240
 
         self.TOL_X = 20
         self.TOL_Y = 35
@@ -47,10 +54,8 @@ class Vision:
         self.frames_perdidos = 0
         self.MAX_FRAMES_BUSQUEDA = 5
         self.MAX_FRAMES_PERDIDOS = 10
-
         self.RADIO_BUSQUEDA_LOCAL = 80
 
-        # Filtro de Kalman
         self.kalman = cv2.KalmanFilter(4, 2)
 
         self.kalman.transitionMatrix = np.array([
@@ -83,11 +88,8 @@ class Vision:
         centro_img = (w // 2, h // 2)
 
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-        # Segmentación por color naranja
         mask = cv2.inRange(hsv, self.naranja_bajo, self.naranja_alto)
 
-        # Limpiar puntitos pequeños de ruido
         kernel = np.ones((3, 3), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
@@ -109,20 +111,17 @@ class Vision:
             for c in contornos:
                 area = cv2.contourArea(c)
 
-                # Ignorar puntitos pequeños
                 if area < self.MIN_AREA_PELOTA:
                     continue
 
                 (tx, ty), tr = cv2.minEnclosingCircle(c)
 
-                # Ignorar manchas demasiado pequeñas
                 if tr < self.MIN_RADIO_PELOTA:
                     continue
 
                 tx = int(tx)
                 ty = int(ty)
 
-                # Ignorar punto naranja de captura
                 distancia_cap = np.sqrt(
                     (tx - self.CAP_X) ** 2 +
                     (ty - self.CAP_Y) ** 2
@@ -131,7 +130,6 @@ class Vision:
                 if distancia_cap < 18:
                     continue
 
-                # Ignorar objetos fuera del espejo
                 distancia_centro = np.sqrt(
                     (tx - self.CX) ** 2 +
                     (ty - self.CY) ** 2
@@ -261,18 +259,23 @@ class Vision:
         if not ret:
             return None
 
+        h, w = frame.shape[:2]
+        centro_img = (w // 2, h // 2)
+
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         if objetivo == "azul":
             mask = cv2.inRange(hsv, self.azul_bajo, self.azul_alto)
             color = (255, 0, 0)
+            nombre = "PORTERIA AZUL"
         else:
             mask = cv2.inRange(hsv, self.amarillo_bajo, self.amarillo_alto)
             color = (0, 255, 255)
+            nombre = "PORTERIA AMARILLA"
 
-        kernel = np.ones((3, 3), np.uint8)
+        kernel = np.ones((5, 5), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        mask = cv2.dilate(mask, kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
         contornos, _ = cv2.findContours(
             mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
@@ -281,35 +284,114 @@ class Vision:
         porteria_detectada = False
         x, y = None, None
         area = 0
+        bbox = None
 
         if contornos:
-            c = max(contornos, key=cv2.contourArea)
-            area = cv2.contourArea(c)
+            mejor_contorno = max(contornos, key=cv2.contourArea)
+            area = cv2.contourArea(mejor_contorno)
 
-            if area > 20:
-                M = cv2.moments(c)
+            if area >= self.MIN_AREA_PORTERIA_360:
+                x_rect, y_rect, w_rect, h_rect = cv2.boundingRect(mejor_contorno)
 
-                if M["m00"] != 0:
-                    x = int(M["m10"] / M["m00"])
-                    y = int(M["m01"] / M["m00"])
-                    porteria_detectada = True
+                x = int(x_rect + w_rect / 2)
+                y = int(y_rect + h_rect / 2)
+
+                bbox = (x_rect, y_rect, w_rect, h_rect)
+                porteria_detectada = True
+
+        dentro_angulo = False
+        dentro_radio = False
+        dentro_rango = False
+        angulo_porteria = None
+        radio_porteria = None
+
+        if porteria_detectada:
+            dx = x - self.CX
+            dy = y - self.CY
+
+            radio_porteria = np.sqrt(dx ** 2 + dy ** 2)
+            angulo_porteria = np.degrees(np.arctan2(dy, dx))
+
+            # Objetivo especial SOLO para portería 360
+            dx_cap = self.CAP_PORTERIA_X - self.CX
+            dy_cap = self.CAP_PORTERIA_Y - self.CY
+
+            radio_cap_porteria = np.sqrt(dx_cap ** 2 + dy_cap ** 2)
+            angulo_cap_porteria = np.degrees(np.arctan2(dy_cap, dx_cap))
+
+            error_angulo = self.diferencia_angulo(
+                angulo_porteria,
+                angulo_cap_porteria
+            )
+
+            error_radio = radio_porteria - radio_cap_porteria
+
+            dentro_angulo = abs(error_angulo) <= self.TOL_ANGULO
+            dentro_radio = abs(error_radio) <= self.TOL_RADIO
+            dentro_rango = dentro_angulo and dentro_radio
 
         if self.mostrar:
             cv2.circle(frame, (self.CX, self.CY), self.RADIO_ROBOT, (0, 0, 0), 3)
 
-            if porteria_detectada:
-                cv2.circle(frame, (x, y), 8, color, -1)
-                cv2.putText(frame, "Porteria 360", (x + 10, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            # Punto naranja: captura de pelota
+            cv2.circle(frame, (self.CAP_X, self.CAP_Y), 7, (0, 100, 255), -1)
+
+            # Punto de captura para portería
+            cv2.circle(frame, (self.CAP_PORTERIA_X, self.CAP_PORTERIA_Y), 7, color, -1)
+
+            cv2.circle(frame, centro_img, 5, (0, 0, 255), -1)
+
+            self.dibujar_zona_curva(frame)
+
+            if porteria_detectada and bbox is not None:
+                x_rect, y_rect, w_rect, h_rect = bbox
+
+                cv2.rectangle(
+                    frame,
+                    (x_rect, y_rect),
+                    (x_rect + w_rect, y_rect + h_rect),
+                    color,
+                    2
+                )
+
+                cv2.circle(frame, (x, y), 6, color, -1)
+
+                cv2.putText(
+                    frame,
+                    nombre,
+                    (x_rect, y_rect - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    color,
+                    2
+                )
+
+            texto = "PORTERIA EN ZONA" if dentro_rango else "ALINEAR PORTERIA 360"
+
+            cv2.putText(
+                frame,
+                texto,
+                (30, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                color,
+                2
+            )
 
             cv2.imshow("camara", frame)
             cv2.imshow("Mascara Porteria 360", mask)
 
         return {
             "detectada": porteria_detectada,
+            "valida": porteria_detectada,
             "x": x,
             "y": y,
-            "area": area
+            "area": area,
+            "radio": radio_porteria,
+            "angulo": angulo_porteria,
+            "dentro_angulo": dentro_angulo,
+            "dentro_radio": dentro_radio,
+            "dentro_rango": dentro_rango
         }
 
     def dibujar_zona_curva(self, frame):

@@ -4,7 +4,7 @@ from huskylib import HuskyLensLibrary
 
 
 class VisionHusky:
-    def __init__(self, mostrar=True, kp_x=0.04, kp_y=0.01, v_max=0.5):
+    def __init__(self, mostrar=True, kp_x=0.01, kp_y=0.1, v_max=0.5):
         self.husky = HuskyLensLibrary("I2C", "")
         self.mostrar = mostrar
 

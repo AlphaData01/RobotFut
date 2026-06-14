@@ -215,6 +215,8 @@ class Vision:
         dentro_rango = False
         angulo_pelota = None
         radio_pelota = None
+        error_angulo = None
+        error_radio = None
 
         if pelota_x is not None and pelota_y is not None and pelota_valida:
             dx = pelota_x - self.CX
@@ -247,6 +249,8 @@ class Vision:
             "kalman_y": py,
             "radio": radio_pelota,
             "angulo": angulo_pelota,
+            "error_angulo": error_angulo,
+            "error_radio": error_radio,
             "frames_perdidos": self.frames_perdidos,
             "dentro_angulo": dentro_angulo,
             "dentro_radio": dentro_radio,

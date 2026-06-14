@@ -15,6 +15,12 @@ KP_360_X = 0.005
 KP_360_Y = 0.004
 V_MAX_360 = 0.5
 
+# ---------------- EMPUJE LATERAL PELOTA 360 ----------------
+ANGULO_ATRAS = 110
+EMPUJE_LATERAL_ATRAS = 1.8
+EMPUJE_LATERAL_CENTRO_ATRAS = 1.6
+ZONA_CENTRO_ATRAS = 25
+
 # ---------------- HUSKY PELOTA ----------------
 V_MAX_HUSKY = 0.25
 
@@ -41,7 +47,7 @@ V_MAX_PORTERIA_360 = 0.5
 # ---------------- MOVIMIENTOS ----------------
 AVANCE_CAPTURA_UX = 0.50
 AVANCE_CAPTURA_UY = 0.00
-TIEMPO_AVANCE_CAPTURA = 1.5
+TIEMPO_AVANCE_CAPTURA = 1.0
 BUSCAR_PORTERIA = 0.50
 
 TIEMPO_TIRO = 0.1
@@ -68,6 +74,42 @@ def cambiar_estado(nuevo_estado):
 
 def leer_sensor_captura():
     return Control.leer_sensor() == 1
+
+
+def mover_pelota_360_con_empuje(datos_360):
+    error_x = datos_360["x"] - vision_360.CAP_X
+    error_y = datos_360["y"] - vision_360.CAP_Y
+
+    vx = KP_360_X * error_x
+    vy = KP_360_Y * error_y
+
+    error_angulo = datos_360.get("error_angulo", None)
+
+    estado = "360 ALINEAR"
+
+    if error_angulo is not None:
+        # Si la pelota está atrás del robot, no quitamos el movimiento normal,
+        # solo agregamos un empuje lateral suave.
+        if abs(error_angulo) >= ANGULO_ATRAS:
+
+            # Si está casi justo atrás, preferencia hacia la derecha.
+            if abs(abs(error_angulo) - 180) <= ZONA_CENTRO_ATRAS:
+                vy += EMPUJE_LATERAL_CENTRO_ATRAS
+                estado = "360 ATRAS CENTRO - EMPUJE DERECHA"
+
+            # Si está atrás cargada hacia un lado, empuja hacia ese lado.
+            else:
+                if error_angulo > 0:
+                    vy += EMPUJE_LATERAL_ATRAS
+                    estado = "360 ATRAS DERECHA - EMPUJE DERECHA"
+                else:
+                    vy -= EMPUJE_LATERAL_ATRAS
+                    estado = "360 ATRAS IZQUIERDA - EMPUJE IZQUIERDA"
+
+    vx = limitar(vx, V_MAX_360)
+    vy = limitar(vy, V_MAX_360)
+
+    return vx, vy, estado
 
 
 try:
@@ -119,17 +161,9 @@ try:
                         estado = "360 ESPERANDO HUSKY"
 
                     else:
-                        error_x = datos_360["x"] - vision_360.CAP_X
-                        error_y = datos_360["y"] - vision_360.CAP_Y
-
-                        vx = KP_360_X * error_x
-                        vy = KP_360_Y * error_y
-
-                        vx = limitar(vx, V_MAX_360)
-                        vy = limitar(vy, V_MAX_360)
+                        vx, vy, estado = mover_pelota_360_con_empuje(datos_360)
 
                         fuente = "360"
-                        estado = "360 ALINEAR"
 
                 else:
                     vx = 0
